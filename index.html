@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<script type="text/javascript" src="js/vendor/modernizr.js"></script>
+    <script type="text/javascript" src="js/phaser.min.js"></script>
+    <script type="text/javascript" src="js/math.min.js"></script>
+</head>
+<body>
+
+
+<script type="text/javascript">
+	var GAME_WIDTH = 500;
+	var GAME_HEIGHT = 500;
+	var mouseEngaged = false;
+	var mouseData = {};
+	var bars;
+	var mat = [];
+	var settings = [];
+
+	var game = new Phaser.Game(GAME_WIDTH, GAME_HEIGHT, Phaser.AUTO, 'game', {
+		preload: preload,
+		create: create,
+		update: update
+	});
+
+	function preload () {
+		console.log("PRELOAD");
+	}
+
+	function create () {
+		debug = this.input.keyboard.addKey(Phaser.Keyboard.X);
+		debug.onDown.add(function () { printMat(mat); }, this);
+
+		debug2 = this.input.keyboard.addKey(Phaser.Keyboard.Z);
+		debug2.onDown.add(function () { printMat(settings); }, this);
+
+		game.stage.backgroundColor = 0xFFFFFF;
+		var barData = [
+			{
+				name: "A",
+				width: 100,
+				color: '#00FF00',
+				dependency: [2, 1, 5, 10],
+				x: 100,
+				y: 400
+			},
+			{
+				name: "B",
+				width: 100,
+				color: '#0000FF',
+				dependency: [1, 4, -2, 10],
+				x: 250,
+				y: 400
+			},
+			{
+				name: "C",
+				width: 100,
+				color: '#FF0000',
+				dependency: [2, 1, -3, 10],
+				x: 400,
+				y: 400
+			}
+		];
+
+		bars = [];
+		mat = [];
+		for (var i = 0; i < barData.length; i++) {
+			var bar = getBar(barData[i].width, 1, barData[i].color);
+			bar.x = barData[i].x;
+			bar.key = i;
+			bar.id = barData[i].name;
+			bar.originY = barData[i].y;
+			bar.dependency = barData[i].dependency;
+			bar.inputEnabled = true;
+			bar.events.onInputDown.add(beginDragBar, this);
+			bars.push(bar);
+			mat.push(bar.dependency);
+		}
+		settings = rref(mat);
+		printMat(settings);
+		for (var i = 0; i < bars.length; i++) {
+			console.log("Initial height set to " + settings[i][settings[0].length - 1])
+			bars[i].height = settings[i][settings[0].length - 1];
+			bars[i].y = bars[i].originY - bars[i].height/2;
+		}
+	}
+
+	function beginDragBar (sprite, context) {
+		mouseEngaged = true;
+		mouseData = {};
+		mouseData.originX = game.input.x;
+		mouseData.originY = game.input.y;
+		mouseData.originWidth = sprite.width;
+		mouseData.originHeight = sprite.height;
+		mouseData.bar = sprite;
+	}
+
+	function endDragBar () {
+		mouseEngaged = false;
+	}
+
+	function update () {
+		if (mouseEngaged) {
+
+			var newHeight = mouseData.originHeight - (game.input.y - mouseData.originY);
+			var newY = mouseData.bar.originY - newHeight / 2;
+			mouseData.bar.height = newHeight;
+			mouseData.bar.y = newY;
+			mat[mouseData.bar.key][mat[mouseData.bar.key].length - 1] = mouseData.bar.height;
+
+			settings = rref(mat);
+			var c = settings[0].length - 1;
+			for (var i = 0; i < bars.length; i++) {
+				if (bars[i].key != mouseData.bar.key) {
+					var r = bars[i].key;
+					bars[i].height = settings[r][c];
+					bars[i].y = bars[i].originY - bars[i].height/2;
+				}
+			}
+			
+		}
+
+		if (game.input.activePointer.isUp) {
+			endDragBar();
+		}
+
+	}
+
+	function printMat (mat) {
+		for (var j = 0; j < mat.length; j++) {
+			console.log(mat[j]);
+		}
+		console.log("---");
+	}
+
+	function getBar (w, h, color) {
+		var bar = game.add.bitmapData(w, h);
+		bar.ctx.beginPath();
+		bar.ctx.rect(0, 0, w, h);
+		bar.ctx.fillStyle = color;
+		bar.ctx.fill();
+		var ret = game.add.sprite(0, 0, bar);
+		ret.anchor.setTo(0.5, 0.5);
+		return ret;
+	}
+
+	function rref (m) {
+		var matrix = [];
+		for (var i = 0; i < m.length; i++) {
+			matrix.push([]);
+			for (var j = 0; j < m[i].length; j++) {
+				matrix[i].push(m[i][j]);
+			}
+		}
+
+		var pivotRow = 0;
+		var pivotCol = 0;
+		var numRows = matrix.length;
+		var numCols = matrix[0].length;
+
+		for (var i = 0; i < numCols - 1; i++) {
+			if (matrix[pivotRow][pivotCol] == 0) {
+				/* Swap with a row that has a non-zero in this col */
+				var swapped = false;
+				for (var j = pivotRow + 1; j < numRows; j++) {
+					if (matrix[j][pivotCol] != 0) {
+						console.log("ROW SWAP");
+						temp = matrix[j];
+						matrix[j] = matrix[i];
+						matrix[i] = temp;
+						swapped = true;
+						break;
+					}
+				}
+
+				if (!swapped) {
+					pivotCol += 1;
+					pivotRow += 1;
+					continue;
+				}
+			}
+
+			for (var j = 0; j < numCols; j++) {
+				matrix[pivotRow][j] /= parseFloat(matrix[pivotRow][pivotCol]);
+			}
+
+			for (var j = 0; j < numRows; j++) {
+				if (j == pivotRow) continue;
+				scaledRow = [];
+				for (var k = 0; k < numCols; k++) {
+					scaledRow.push(matrix[pivotRow][k] * -1 * matrix[j][pivotCol]);
+				}
+				for (var k = 0; k < numCols; k++) {
+					matrix[j][k] += scaledRow[k];
+				}
+			}
+			pivotRow += 1;
+			pivotCol += 1;
+		}
+		return matrix;
+	}
+
+
+</script>
+
+</body>
+
+</html>
